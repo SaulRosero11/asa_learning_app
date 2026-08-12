@@ -235,3 +235,5 @@ Para producción, configura todas las variables de entorno del sistema operativo
 - `GOOGLE_CLIENT_SECRET` — secreto de la app de Google Cloud
 - `CORS_ALLOWED_ORIGINS` — URL de producción del frontend
 - `FRONTEND_URL` — URL pública del frontend (para links en emails)
+#   a s a _ l e a r n i n g _ a p p  
+ 
