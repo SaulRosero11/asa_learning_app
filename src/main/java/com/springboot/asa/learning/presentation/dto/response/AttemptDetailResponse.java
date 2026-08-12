@@ -14,9 +14,13 @@ public record AttemptDetailResponse(
         List<AnswerDetail> answers
 ) {
     public record AnswerDetail(
+            UUID responseId,
             UUID questionId,
             String questionText,
+            String questionType,
             String selectedOptionText,
-            boolean correct
+            boolean correct,
+            BigDecimal pointsAwarded,
+            BigDecimal maxPoints
     ) {}
 }

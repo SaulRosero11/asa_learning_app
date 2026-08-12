@@ -147,6 +147,8 @@ public class AssessmentController {
                 responseRepo.deleteByAttemptIdIn(attemptIds);
                 attemptRepo.deleteByAssessmentId(id);
             }
+            // Delete options first (native SQL avoids JPA orphan-removal FK nullification)
+            questionRepo.deleteOptionsByAssessmentId(id);
             // Replace all questions
             questionRepo.deleteByAssessmentId(id);
             int idx = 0;
@@ -285,7 +287,7 @@ public class AssessmentController {
             responseRepo.save(studentResponse);
 
             questionResults.add(new QuestionResultResponse(
-                    question.getId(), question.getQuestionText(),
+                    question.getId(), question.getQuestionText(), question.getQuestionType(),
                     points, question.getWeight(), selectedOptionId, wasCorrect));
         }
 
@@ -385,13 +387,16 @@ public class AssessmentController {
                                         String qText = q != null ? q.getQuestionText() : "Pregunta";
                                         String optText = r.getSelectedOptionId() != null
                                                 ? options.getOrDefault(r.getSelectedOptionId(),
-                                                        new QuestionOptionEntity()) .getOptionText()
+                                                        new QuestionOptionEntity()).getOptionText()
                                                 : r.getTextResponse();
                                         boolean correct = r.getPointsAwarded() != null
                                                 && r.getPointsAwarded().compareTo(BigDecimal.ZERO) > 0;
                                         return new AttemptDetailResponse.AnswerDetail(
-                                                r.getQuestionId(), qText,
-                                                optText != null ? optText : "—", correct);
+                                                r.getId(), r.getQuestionId(), qText,
+                                                q != null ? q.getQuestionType() : "SINGLE_CHOICE",
+                                                optText != null ? optText : "—", correct,
+                                                r.getPointsAwarded() != null ? r.getPointsAwarded() : BigDecimal.ZERO,
+                                                q != null ? q.getWeight() : BigDecimal.ZERO);
                                     }).toList();
 
                     return new AttemptDetailResponse(
@@ -462,8 +467,11 @@ public class AssessmentController {
                                     boolean correct = r.getPointsAwarded() != null
                                             && r.getPointsAwarded().compareTo(BigDecimal.ZERO) > 0;
                                     return new AttemptDetailResponse.AnswerDetail(
-                                            r.getQuestionId(), qText,
-                                            optText != null ? optText : "—", correct);
+                                            r.getId(), r.getQuestionId(), qText,
+                                            q != null ? q.getQuestionType() : "SINGLE_CHOICE",
+                                            optText != null ? optText : "—", correct,
+                                            r.getPointsAwarded() != null ? r.getPointsAwarded() : BigDecimal.ZERO,
+                                            q != null ? q.getWeight() : BigDecimal.ZERO);
                                 }).toList();
                 return new AttemptDetailResponse(
                         attempt.getId(), attempt.getUserId(), email,
@@ -476,6 +484,49 @@ public class AssessmentController {
                 Comparator.nullsLast(Comparator.reverseOrder()))).toList();
 
         return ResponseEntity.ok(results);
+    }
+
+    // ─── Manual grading ───────────────────────────────────────────────────────
+
+    @PutMapping("/responses/{responseId}/grade")
+    @Transactional
+    public ResponseEntity<Map<String, BigDecimal>> gradeResponse(
+            @PathVariable UUID responseId,
+            @RequestBody Map<String, BigDecimal> body,
+            @AuthenticationPrincipal AuthenticatedUser principal) {
+
+        requireLeaderOrAdmin(principal);
+
+        StudentResponseEntity response = responseRepo.findById(responseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Respuesta no encontrada"));
+
+        BigDecimal points = body.get("points");
+        if (points == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El campo 'points' es requerido");
+        }
+
+        QuestionEntity question = questionRepo.findById(response.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pregunta no encontrada"));
+
+        if (points.compareTo(BigDecimal.ZERO) < 0 || points.compareTo(question.getWeight()) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Los puntos deben estar entre 0 y " + question.getWeight());
+        }
+
+        response.setPointsAwarded(points);
+        responseRepo.save(response);
+
+        AssessmentAttemptEntity attempt = attemptRepo.findById(response.getAttemptId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Intento no encontrado"));
+
+        BigDecimal newTotal = responseRepo.findByAttemptId(attempt.getId()).stream()
+                .map(r -> r.getPointsAwarded() != null ? r.getPointsAwarded() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        attempt.setTotalScore(newTotal);
+        attemptRepo.save(attempt);
+
+        return ResponseEntity.ok(Map.of("totalScore", newTotal));
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

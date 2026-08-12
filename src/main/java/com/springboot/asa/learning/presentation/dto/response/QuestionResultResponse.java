@@ -6,6 +6,7 @@ import java.util.UUID;
 public record QuestionResultResponse(
         UUID questionId,
         String questionText,
+        String questionType,
         BigDecimal pointsAwarded,
         BigDecimal weight,
         UUID selectedOptionId,
