@@ -34,12 +34,16 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         User user = processGoogleLoginUseCase.execute(email, name);
 
-        // Emitir cookies de sesión (sesión larga por defecto en Google SSO)
-        loginUseCase.emitTokenCookies(user, true, response);
+        // Generar tokens sin setear cookies — el frontend los recibe como query params
+        // y los convierte en cookies HttpOnly en su propio dominio (evita problema cross-domain)
+        LoginUseCaseImpl.TokenPair tokens = loginUseCase.generateTokens(user, true);
 
-        String redirect = user.isOnboardingCompleted()
-                ? frontendUrl + "/dashboard"
-                : frontendUrl + "/onboarding";
+        String redirect = frontendUrl + "/api/auth/session"
+                + "?at=" + tokens.accessToken()
+                + "&rt=" + tokens.rawRefreshToken()
+                + "&long=true"
+                + "&mcp=" + user.isMustChangePassword()
+                + "&oc=" + user.isOnboardingCompleted();
         response.sendRedirect(redirect);
     }
 }

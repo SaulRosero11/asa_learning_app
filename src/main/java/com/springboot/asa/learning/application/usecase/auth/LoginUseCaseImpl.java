@@ -47,7 +47,10 @@ public class LoginUseCaseImpl {
         return user;
     }
 
-    public void emitTokenCookies(User user, boolean rememberDevice, HttpServletResponse response) {
+    public record TokenPair(String accessToken, String rawRefreshToken, int accessMaxAge, int refreshMaxAge) {}
+
+    @Transactional
+    public TokenPair generateTokens(User user, boolean rememberDevice) {
         String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail(), user.getRoles());
 
         String rawRefreshToken = UUID.randomUUID().toString();
@@ -65,19 +68,27 @@ public class LoginUseCaseImpl {
                 .build();
         refreshTokenRepository.save(refreshToken);
 
-        int accessMaxAge = (int) (jwtProperties.getAccessExpirationMs() / 1000);
-        int refreshMaxAge = (int) (refreshMs / 1000);
+        return new TokenPair(
+                accessToken,
+                rawRefreshToken,
+                (int) (jwtProperties.getAccessExpirationMs() / 1000),
+                (int) (refreshMs / 1000)
+        );
+    }
 
-        addCookiesToResponse(response, accessToken, rawRefreshToken, accessMaxAge, refreshMaxAge);
+    public void emitTokenCookies(User user, boolean rememberDevice, HttpServletResponse response) {
+        TokenPair tokens = generateTokens(user, rememberDevice);
+        addCookiesToResponse(response, tokens.accessToken(), tokens.rawRefreshToken(),
+                tokens.accessMaxAge(), tokens.refreshMaxAge());
     }
 
     private void addCookiesToResponse(HttpServletResponse response, String accessToken,
                                       String refreshToken, int accessMaxAge, int refreshMaxAge) {
         response.addHeader("Set-Cookie",
                 "asa_access_token=" + accessToken +
-                        "; HttpOnly; SameSite=Strict; Path=/; Max-Age=" + accessMaxAge);
+                        "; HttpOnly; SameSite=Lax; Path=/; Max-Age=" + accessMaxAge);
         response.addHeader("Set-Cookie",
                 "asa_refresh_token=" + refreshToken +
-                        "; HttpOnly; SameSite=Strict; Path=/api/v1/auth/refresh; Max-Age=" + refreshMaxAge);
+                        "; HttpOnly; SameSite=Lax; Path=/api/v1/auth/refresh; Max-Age=" + refreshMaxAge);
     }
 }
