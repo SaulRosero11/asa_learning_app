@@ -52,7 +52,8 @@ public class SecurityConfig {
                                 "/login/oauth2/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
-                                "/api-docs/**"
+                                "/api-docs/**",
+                                "/actuator/health"
                         ).permitAll()
                         // Todos los demás — incluido /api/v1/auth/me, /logout, /change-password
                         .anyRequest().authenticated()
