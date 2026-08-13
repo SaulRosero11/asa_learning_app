@@ -6,6 +6,7 @@ target/
 
 # ===== Secretos / Variables de entorno =====
 application-local.properties
+application.properties
 *.env
 .env
 .env.*
